@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
-    bucket = "mage-os-tf-state"
+    bucket = "test-mageos-opentofu1"
     prefix = "terraform/state"
   }
 
@@ -21,8 +21,8 @@ provider "github" {
   }
 }
 
-data "github_user" "mage-os-ci" {
-  username = "mage-os-ci"
+data "github_user" "davidtabat" {
+  username = "davidtabat"
 }
 
 # Test change
@@ -88,7 +88,7 @@ resource "github_branch_protection" "mirrors" {
   enforce_admins = true
   restrict_pushes {
     blocks_creations = false
-    push_allowances  = [data.github_user.mage-os-ci.node_id]
+    push_allowances  = [data.github_user.davidtabat.node_id]
   }
   allows_force_pushes = true
 }
@@ -118,9 +118,9 @@ resource "github_branch_protection" "repositories-release-please" {
   pattern       = each.value.release_please_branch
   restrict_pushes {
     blocks_creations = false
-    push_allowances  = [data.github_user.mage-os-ci.node_id]
+    push_allowances  = [data.github_user.davidtabat.node_id]
   }
-  force_push_bypassers = [data.github_user.mage-os-ci.node_id]
+  force_push_bypassers = [data.github_user.davidtabat.node_id]
 }
 
 resource "github_branch_protection" "repositories" {
@@ -144,7 +144,7 @@ resource "github_branch_protection" "repositories" {
   }
 
   restrict_pushes {
-    push_allowances = try(each.value.is_part_of_monorepo, false) ? [data.github_user.mage-os-ci.node_id] : [for team in each.value.teams : github_team.teams[team].node_id]
+    push_allowances = try(each.value.is_part_of_monorepo, false) ? [data.github_user.davidtabat.node_id] : [for team in each.value.teams : github_team.teams[team].node_id]
   }
 }
 
@@ -175,8 +175,11 @@ resource "github_team_repository" "tech-lead" {
   permission = "maintain"
 }
 
-resource "github_repository_file" "codeowners" {
-  for_each   = var.repositories
+ resource "github_repository_file" "codeowners" {
+  for_each = {
+    for k, v in var.repositories : k => v
+    if !github_repository.repositories[k].archived
+  }
   repository = github_repository.repositories[each.key].name
   branch     = github_repository.repositories[each.key].default_branch
   file       = "CODEOWNERS"
@@ -184,8 +187,8 @@ resource "github_repository_file" "codeowners" {
     " ",
     formatlist("@${var.organization_name}/%s", try(each.value.teams, []))
   )}"
-  commit_message      = "Managed by Terraform"
-  commit_author       = "mage-os-ci"
+  commit_message      = "Managed by OpenTofu"
+  commit_author       = "davidtabat"
   commit_email        = "info@mage-os.org"
   overwrite_on_create = true
 
@@ -223,8 +226,8 @@ jobs:
       DISCORD_WEBHOOK: $${{ secrets.DISCORD_WEBHOOK }}
       MAGEOS_GITHUB_TOKEN: $${{ secrets.MAGE_OS_CI_TOKEN }}
 EOT
-  commit_message      = "Managed by Terraform"
-  commit_author       = "mage-os-ci"
+  commit_message      = "Managed by OpenTofu"
+  commit_author       = "davidtabat"
   commit_email        = "info@mage-os.org"
   overwrite_on_create = true
 
@@ -254,8 +257,6 @@ on:
 
 jobs:
   run-ecomscan:
-    # Skip if it's a push event on a PR (it can't access secrets)
-    if: github.event.pull_request == null || github.event_name != 'push'
     name: Run Sansec eComscan
     runs-on: ubuntu-latest
     permissions:
@@ -287,7 +288,7 @@ jobs:
           fi
 EOT
   commit_message      = "Add Sansec eComscan workflow"
-  commit_author       = "mage-os-ci"
+  commit_author       = "davidtabat"
   commit_email        = "info@mage-os.org"
   overwrite_on_create = true
 
